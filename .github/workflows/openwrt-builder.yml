@@ -74,11 +74,6 @@ jobs:
       run: |
         [ -e files ] && mv files openwrt/files
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-        # 确保行尾为 LF，且脚本可执行
-        sed -i 's/\r$//' openwrt/$DIY_P2_SH
-        chmod +x openwrt/$DIY_P2_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P2_SH
     
     - name: Download package
       id: package
