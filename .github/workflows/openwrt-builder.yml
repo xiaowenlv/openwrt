@@ -1,7 +1,9 @@
 #
-# OpenWrt Builder (x86, 最新科学插件)
-# 修改：使用 fw876/helloworld 源，避免 gn 编译错误
-# 作者：ChatGPT（为格拉河北优化）
+# OpenWrt Builder - Final Optimized Version
+#
+# This workflow combines speed, stability, and readability.
+# - Uses a stable package feed (Lienol) to avoid compilation errors.
+# - Employs a fast-failover build strategy.
 #
 
 name: OpenWrt Builder
@@ -13,9 +15,7 @@ on:
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
   REPO_BRANCH: master
-  FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: .config
-  DIY_P1_SH: diy-part1.sh
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
@@ -41,17 +41,7 @@ jobs:
         df -h
         echo "Installing dependencies..."
         sudo -E apt-get -qq update
-        sudo -E apt-get -qq install \
-          ack antlr3 asciidoc autoconf automake autopoint binutils bison \
-          build-essential bzip2 ccache cmake cpio curl device-tree-compiler \
-          fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged \
-          help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev \
-          libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev \
-          libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool \
-          lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf \
-          python2.7 python3 python3-pyelftools python3-setuptools qemu-utils \
-          rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl \
-          unzip vim wget xmlto xxd zlib1g-dev dos2unix
+        sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev dos2unix
         sudo -E apt-get -qq autoremove --purge
         sudo -E apt-get -qq clean
         sudo timedatectl set-timezone "$TZ"
@@ -61,29 +51,22 @@ jobs:
     - name: Clone source code
       working-directory: /workdir
       run: |
-        df -hT $PWD
         git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-    - name: Configure feeds (use official fw876/helloworld)
+    - name: Load stable custom feeds
       run: |
-        cd openwrt
-        echo "Configuring feeds..."
-        # 删除默认 helloworld 源
-        sed -i '/helloworld/d' feeds.conf.default
-        # 添加官方最新版 helloworld 源
-        echo "src-git helloworld https://github.com/fw876/helloworld" >> feeds.conf.default
-        echo "Feeds configuration updated:"
-        cat feeds.conf.default
-
-        # 如果存在用户自定义 DIY 脚本则执行
-        cd ..
-        if [ -f "$DIY_P1_SH" ]; then
-          chmod +x $DIY_P1_SH
-          cd openwrt
-          $GITHUB_WORKSPACE/$DIY_P1_SH
-          cd ..
-        fi
+        # Overwrite the default feeds configuration with a clean one
+        # This is the key step to remove 'helloworld' and add 'lienol'
+        cat > openwrt/feeds.conf.default <<EOF
+        src-git packages https://github.com/coolsnowwolf/packages
+        src-git luci https://github.com/coolsnowwolf/luci
+        src-git routing https://github.com/coolsnowwolf/routing
+        src-git telephony https://github.com/openwrt/telephony
+        src-git lienol https://github.com/Lienol/openwrt-package
+        EOF
+        echo "Feeds configuration updated successfully:"
+        cat openwrt/feeds.conf.default
 
     - name: Update feeds
       run: cd openwrt && ./scripts/feeds update -a
@@ -109,7 +92,7 @@ jobs:
       id: compile
       run: |
         cd openwrt
-        echo "Starting build: $(nproc) threads, linking fallback single thread..."
+        echo "Starting build: $(nproc) threads with single-thread fallback..."
         make -j$(nproc) V=s || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
@@ -119,13 +102,6 @@ jobs:
     - name: Check space usage
       if: (!cancelled())
       run: df -hT
-
-    - name: Upload bin directory
-      uses: actions/upload-artifact@main
-      if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
-      with:
-        name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: openwrt/bin
 
     - name: Organize files
       id: organize
@@ -140,7 +116,7 @@ jobs:
       uses: actions/upload-artifact@main
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
-        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        name: OpenWrt_firmware_${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: ${{ env.FIRMWARE }}
 
     - name: Generate release tag
@@ -168,7 +144,7 @@ jobs:
         keep_minimum_runs: 2
 
     - name: Remove old Releases
-      uses: dev-drprasad/delete-older-releases@master
+      uses: dev-dr-prasad/delete-older-releases@master
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       with:
         keep_latest: 3
